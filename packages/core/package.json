@@ -5,6 +5,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bullmq": "^5.71.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "vitest": "^4.1.2"
   }
 }
