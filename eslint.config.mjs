@@ -12,4 +12,7 @@ export default [
       'no-console': 'warn',
     },
   },
+  {
+    ignores: ['**/dist/**', '**/node_modules/**'],
+  },
 ]

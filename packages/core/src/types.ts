@@ -2,15 +2,15 @@
 export interface Document {
   id: string
   sourceType: 'slack' | 'teams' | 'github' | 'drive' | 'filesystem'
-  sourceId: string        // workspace/repo/drive id
-  externalId: string      // original id from the source
+  sourceId: string // workspace/repo/drive id
+  externalId: string // original id from the source
   title: string
   content: string
   url?: string
   author?: string
   createdAt: Date
   updatedAt: Date
-  permissions: string[]   // list of user/group ids with access
+  permissions: string[] // list of user/group ids with access
   metadata: Record<string, unknown>
 }
 

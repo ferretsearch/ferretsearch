@@ -7,8 +7,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
     "prepare": "husky"
   },
   "keywords": [],
@@ -29,6 +31,9 @@
     "**/*.ts": [
       "prettier --write",
       "eslint --fix"
+    ],
+    "**/*.{json,md,yaml,yml}": [
+      "prettier --write"
     ]
   }
 }
