@@ -15,8 +15,8 @@ describe('SlidingWindowChunker', () => {
     expect(chunks.length).toBe(5)
 
     // Verify overlap: chunk[0] ends with 'c d', chunk[1] starts with 'c d'
-    const w0 = chunks[0].content.split(' ')
-    const w1 = chunks[1].content.split(' ')
+    const w0 = chunks[0]!.content.split(' ')
+    const w1 = chunks[1]!.content.split(' ')
     expect(w0.slice(-2)).toEqual(w1.slice(0, 2))
 
     // All chunks reference the same document
@@ -32,8 +32,8 @@ describe('SlidingWindowChunker', () => {
     const chunks = chunker.chunk(DOC_ID, content)
 
     expect(chunks.length).toBe(1)
-    expect(chunks[0].content).toBe(content)
-    expect(chunks[0].index).toBe(0)
+    expect(chunks[0]!.content).toBe(content)
+    expect(chunks[0]!.index).toBe(0)
   })
 
   it('returns an empty array for empty content', () => {
@@ -53,7 +53,7 @@ describe('SlidingWindowChunker', () => {
     // Only chunks with >= 3 words should remain
     expect(chunks.every((c) => c.tokenCount >= 3)).toBe(true)
     // The last kept chunk should not contain only 'g'
-    expect(chunks[chunks.length - 1].content).not.toBe('g')
+    expect(chunks[chunks.length - 1]!.content).not.toBe('g')
   })
 
   it('fills tokenCount with the word count of the chunk', () => {
