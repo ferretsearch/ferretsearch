@@ -1,6 +1,11 @@
 import { indexQueue } from '@ferretsearch/core'
 import type { IConnector } from '@ferretsearch/core'
-import { SlackConnector, loadSlackConfig } from '@ferretsearch/connectors'
+import {
+  SlackConnector,
+  loadSlackConfig,
+  GitHubConnector,
+  loadGitHubConfig,
+} from '@ferretsearch/connectors'
 
 export interface ConnectorStatus {
   id: string
@@ -102,6 +107,27 @@ export class Orchestrator {
         })
       } catch (err) {
         log(`Could not load Slack config: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    // GitHub — only if token is configured
+    if (process.env['GITHUB_TOKEN']) {
+      try {
+        const config = loadGitHubConfig()
+        const connector = new GitHubConnector(config)
+        this.entries.set(config.id, {
+          connector,
+          status: {
+            id: config.id,
+            type: config.type,
+            status: 'idle',
+            lastSync: null,
+            documentsIndexed: 0,
+          },
+          interval: null,
+        })
+      } catch (err) {
+        log(`Could not load GitHub config: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
   }

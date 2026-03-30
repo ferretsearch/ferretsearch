@@ -9,28 +9,41 @@ interface YamlSlackConfig {
   syncHistoryDays?: number
 }
 
-interface FerretSearchYaml {
+interface YamlGitHubConfig {
+  token?: string
+  repos?: string[]
+  indexReadme?: boolean
+  indexIssues?: boolean
+  indexPRs?: boolean
+  indexWiki?: boolean
+  indexCode?: boolean
+  codeExtensions?: string[]
+  syncIntervalMinutes?: number
+}
+
+export interface FerretSearchYaml {
   connectors?: {
     slack?: YamlSlackConfig
+    github?: YamlGitHubConfig
   }
 }
 
-function readYamlConfig(projectRoot: string): YamlSlackConfig {
+export function readYamlConfig(projectRoot: string): FerretSearchYaml {
   const configPath = join(projectRoot, 'ferretsearch.config.yml')
   if (!existsSync(configPath)) return {}
 
   const raw = readFileSync(configPath, 'utf-8')
   const parsed = loadYaml(raw) as FerretSearchYaml | null
-  return parsed?.connectors?.slack ?? {}
+  return parsed ?? {}
 }
 
 export function loadSlackConfig(projectRoot?: string): SlackConfig {
   const root = projectRoot ?? process.cwd()
   const yaml = readYamlConfig(root)
+  const slack = yaml.connectors?.slack ?? {}
 
   // Env vars have priority over YAML
-  const botToken =
-    process.env['SLACK_BOT_TOKEN'] ?? yaml.botToken
+  const botToken = process.env['SLACK_BOT_TOKEN'] ?? slack.botToken
 
   if (!botToken) {
     throw new Error(
@@ -42,14 +55,17 @@ export function loadSlackConfig(projectRoot?: string): SlackConfig {
   const channelsEnv = process.env['SLACK_CHANNELS']
   const channels: string[] =
     channelsEnv != null && channelsEnv.trim() !== ''
-      ? channelsEnv.split(',').map((c) => c.trim()).filter(Boolean)
-      : (yaml.channels ?? [])
+      ? channelsEnv
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean)
+      : (slack.channels ?? [])
 
   const historyEnv = process.env['SLACK_SYNC_HISTORY_DAYS']
   const syncHistoryDays =
     historyEnv != null && historyEnv.trim() !== ''
       ? parseInt(historyEnv, 10)
-      : (yaml.syncHistoryDays ?? 30)
+      : (slack.syncHistoryDays ?? 30)
 
   return {
     id: 'slack',

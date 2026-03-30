@@ -4,12 +4,26 @@ import { Orchestrator } from './orchestrator.js'
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
-const { mockAdd, mockConnect, mockDisconnect, mockSync, mockLoadSlackConfig } = vi.hoisted(() => ({
+const {
+  mockAdd,
+  mockConnect,
+  mockDisconnect,
+  mockSync,
+  mockLoadSlackConfig,
+  mockGithubConnect,
+  mockGithubDisconnect,
+  mockGithubSync,
+  mockLoadGitHubConfig,
+} = vi.hoisted(() => ({
   mockAdd: vi.fn().mockResolvedValue({}),
   mockConnect: vi.fn().mockResolvedValue(undefined),
   mockDisconnect: vi.fn().mockResolvedValue(undefined),
   mockSync: vi.fn(),
   mockLoadSlackConfig: vi.fn(),
+  mockGithubConnect: vi.fn().mockResolvedValue(undefined),
+  mockGithubDisconnect: vi.fn().mockResolvedValue(undefined),
+  mockGithubSync: vi.fn(),
+  mockLoadGitHubConfig: vi.fn(),
 }))
 
 vi.mock('@ferretsearch/core', () => ({
@@ -27,6 +41,22 @@ const SLACK_CONFIG = {
   syncHistoryDays: 7,
 }
 
+const GITHUB_CONFIG = {
+  id: 'github',
+  type: 'github' as const,
+  enabled: true,
+  syncIntervalMinutes: 60,
+  credentials: { token: 'ghp-test' },
+  token: 'ghp-test',
+  repos: ['owner/repo'],
+  indexReadme: true,
+  indexIssues: true,
+  indexPRs: true,
+  indexWiki: true,
+  indexCode: false,
+  codeExtensions: ['.ts'],
+}
+
 vi.mock('@ferretsearch/connectors', () => ({
   SlackConnector: class {
     config = SLACK_CONFIG
@@ -35,6 +65,13 @@ vi.mock('@ferretsearch/connectors', () => ({
     disconnect = mockDisconnect
   },
   loadSlackConfig: mockLoadSlackConfig,
+  GitHubConnector: class {
+    config = GITHUB_CONFIG
+    connect = mockGithubConnect
+    sync = mockGithubSync
+    disconnect = mockGithubDisconnect
+  },
+  loadGitHubConfig: mockLoadGitHubConfig,
 }))
 
 // ---------------------------------------------------------------------------
@@ -57,22 +94,29 @@ beforeEach(() => {
   mockDisconnect.mockResolvedValue(undefined)
   mockSync.mockReturnValue(makeGen([]))
   mockLoadSlackConfig.mockReturnValue(SLACK_CONFIG)
+  mockGithubConnect.mockResolvedValue(undefined)
+  mockGithubDisconnect.mockResolvedValue(undefined)
+  mockGithubSync.mockReturnValue(makeGen([]))
+  mockLoadGitHubConfig.mockReturnValue(GITHUB_CONFIG)
   delete process.env['SLACK_BOT_TOKEN']
+  delete process.env['GITHUB_TOKEN']
 })
 
 afterEach(() => {
   delete process.env['SLACK_BOT_TOKEN']
+  delete process.env['GITHUB_TOKEN']
 })
 
 // ---------------------------------------------------------------------------
-// Tests
+// Slack tests (unchanged)
 // ---------------------------------------------------------------------------
 describe('Orchestrator.start()', () => {
-  it('loads no connectors when SLACK_BOT_TOKEN is absent', async () => {
+  it('loads no connectors when no tokens are set', async () => {
     const orch = new Orchestrator()
     await orch.start()
 
     expect(mockConnect).not.toHaveBeenCalled()
+    expect(mockGithubConnect).not.toHaveBeenCalled()
     expect(orch.getStatus()).toHaveLength(0)
   })
 
@@ -106,13 +150,57 @@ describe('Orchestrator.start()', () => {
 
   it('does not throw when loadSlackConfig raises (logs and continues)', async () => {
     process.env['SLACK_BOT_TOKEN'] = 'xoxb-test'
-    mockLoadSlackConfig.mockImplementation(() => {
-      throw new Error('bad config')
-    })
+    mockLoadSlackConfig.mockImplementation(() => { throw new Error('bad config') })
 
     const orch = new Orchestrator()
     await expect(orch.start()).resolves.toBeUndefined()
     expect(orch.getStatus()).toHaveLength(0)
+  })
+
+  // ── GitHub ─────────────────────────────────────────────────────────────
+  it('loads and connects the GitHub connector when GITHUB_TOKEN is set', async () => {
+    process.env['GITHUB_TOKEN'] = 'ghp-test'
+    const orch = new Orchestrator()
+    await orch.start()
+    await flushMicrotasks()
+
+    expect(mockLoadGitHubConfig).toHaveBeenCalledTimes(1)
+    expect(mockGithubConnect).toHaveBeenCalledTimes(1)
+
+    const [status] = orch.getStatus()
+    expect(status?.id).toBe('github')
+    expect(status?.type).toBe('github')
+  })
+
+  it('loads both connectors when both tokens are set', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-test'
+    process.env['GITHUB_TOKEN'] = 'ghp-test'
+    const orch = new Orchestrator()
+    await orch.start()
+    await flushMicrotasks()
+
+    expect(orch.getStatus()).toHaveLength(2)
+  })
+
+  it('does not throw when loadGitHubConfig raises (logs and continues)', async () => {
+    process.env['GITHUB_TOKEN'] = 'ghp-test'
+    mockLoadGitHubConfig.mockImplementation(() => { throw new Error('bad github config') })
+
+    const orch = new Orchestrator()
+    await expect(orch.start()).resolves.toBeUndefined()
+    expect(orch.getStatus()).toHaveLength(0)
+  })
+
+  it('marks GitHub connector as error when connect() throws', async () => {
+    process.env['GITHUB_TOKEN'] = 'ghp-test'
+    mockGithubConnect.mockRejectedValue(new Error('invalid token'))
+
+    const orch = new Orchestrator()
+    await orch.start()
+
+    const [status] = orch.getStatus()
+    expect(status?.status).toBe('error')
+    expect(status?.error).toBe('invalid token')
   })
 })
 
@@ -131,8 +219,8 @@ describe('Orchestrator.triggerSync()', () => {
     const doc2 = { id: 'doc-2' }
 
     mockSync
-      .mockReturnValueOnce(makeGen([]))              // initial sync from start()
-      .mockReturnValueOnce(makeGen([doc1, doc2]))    // triggerSync
+      .mockReturnValueOnce(makeGen([]))
+      .mockReturnValueOnce(makeGen([doc1, doc2]))
 
     const orch = new Orchestrator()
     await orch.start()
@@ -151,8 +239,8 @@ describe('Orchestrator.triggerSync()', () => {
     const doc = { id: 'doc-1' }
 
     mockSync
-      .mockReturnValueOnce(makeGen([]))       // initial sync from start()
-      .mockReturnValueOnce(makeGen([doc]))    // triggerSync (no id)
+      .mockReturnValueOnce(makeGen([]))
+      .mockReturnValueOnce(makeGen([doc]))
 
     const orch = new Orchestrator()
     await orch.start()
@@ -173,6 +261,18 @@ describe('Orchestrator.stop()', () => {
     await orch.stop()
 
     expect(mockDisconnect).toHaveBeenCalledTimes(1)
+    expect(orch.getStatus()).toHaveLength(0)
+  })
+
+  it('disconnects both connectors when both are active', async () => {
+    process.env['SLACK_BOT_TOKEN'] = 'xoxb-test'
+    process.env['GITHUB_TOKEN'] = 'ghp-test'
+    const orch = new Orchestrator()
+    await orch.start()
+    await orch.stop()
+
+    expect(mockDisconnect).toHaveBeenCalledTimes(1)
+    expect(mockGithubDisconnect).toHaveBeenCalledTimes(1)
     expect(orch.getStatus()).toHaveLength(0)
   })
 

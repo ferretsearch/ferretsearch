@@ -1,4 +1,6 @@
-import '@dotenvx/dotenvx/config'
+import { config } from '@dotenvx/dotenvx'
+import { resolve } from 'node:path'
+config({ path: resolve(__dirname, '../../../../.env') })
 
 import { loadSlackConfig } from '../config/loader.js'
 import { SlackConnector } from './slackConnector.js'

@@ -13,11 +13,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "npx tsx src/slack/smokeTest.ts",
+    "smoke:github": "npx tsx src/github/smokeTest.ts",
     "list-channels": "npx tsx src/slack/listChannels.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.58.0",
     "@ferretsearch/core": "workspace:*",
+    "@octokit/rest": "^22.0.1",
     "@slack/web-api": "^7.15.0",
     "js-yaml": "^4.1.1"
   },
