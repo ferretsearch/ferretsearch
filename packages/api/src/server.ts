@@ -1,6 +1,9 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
+import fastifyStatic from '@fastify/static'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { OllamaEmbedder, QdrantStore, indexQueue } from '@capytrace/core'
 import type { SearchResult } from '@capytrace/core'
 import type { Orchestrator } from './orchestrator.js'
@@ -138,6 +141,25 @@ export async function buildServer(orchestrator: Orchestrator) {
     const result = await orchestrator.triggerSync()
     return reply.send(result)
   })
+
+  // ── UI static assets (production only) ────────────────────────────────────
+  const uiDist = join(__dirname, '..', '..', 'ui', 'dist')
+  const uiIndex = join(uiDist, 'index.html')
+
+  if (existsSync(uiIndex)) {
+    const assetsDir = join(uiDist, 'assets')
+    if (existsSync(assetsDir)) {
+      await app.register(fastifyStatic, {
+        root: assetsDir,
+        prefix: '/assets/',
+      })
+    }
+
+    const indexHtml = readFileSync(uiIndex, 'utf-8')
+    app.get('/', async (_request, reply) => {
+      return reply.type('text/html').send(indexHtml)
+    })
+  }
 
   return app
 }
