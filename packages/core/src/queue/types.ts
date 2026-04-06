@@ -14,6 +14,13 @@ export interface IndexJobResult {
   durationMs: number
   success: boolean
   error?: string
+  skipped?: boolean
+}
+
+// Payload stored in the Dead Letter Queue for permanently failed jobs
+export interface DlqJobData extends IndexJobData {
+  lastError?: string
+  failedAt?: string
 }
 
 // Queue names

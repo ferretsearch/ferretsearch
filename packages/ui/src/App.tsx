@@ -4,6 +4,7 @@ import { SearchBar } from './components/SearchBar.tsx'
 import { SearchResults } from './components/SearchResults.tsx'
 import { ServiceStatus } from './components/ServiceStatus.tsx'
 import { SyncButton } from './components/SyncButton.tsx'
+import { IndexingProgress } from './components/IndexingProgress.tsx'
 import { useSearch } from './hooks/useSearch.ts'
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ function SearchPage() {
             <span className="font-bold text-white text-lg tracking-tight">CapyTrace</span>
           </div>
           <div className="flex items-center gap-4">
+            <IndexingProgress />
             <ServiceStatus />
             <SyncButton />
           </div>
