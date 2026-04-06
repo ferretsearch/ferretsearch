@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq'
-import type { IndexJobData, IndexJobResult } from './types.js'
+import type { IndexJobData, IndexJobResult, DlqJobData } from './types.js'
 import { QUEUE_NAMES } from './types.js'
 
 const connection = {
@@ -19,6 +19,19 @@ export const indexQueue = new Queue<IndexJobData, IndexJobResult>(
       },
       removeOnComplete: { count: 100 },
       removeOnFail: { count: 50 },
+    },
+  },
+)
+
+/** Queue for permanently failed jobs — keeps last 100 completed entries for audit. */
+export const dlqQueue = new Queue<DlqJobData, IndexJobResult>(
+  QUEUE_NAMES.DEAD_LETTER,
+  {
+    connection,
+    defaultJobOptions: {
+      attempts: 1,
+      removeOnComplete: { count: 100 },
+      removeOnFail: false,
     },
   },
 )

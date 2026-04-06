@@ -4,8 +4,8 @@ import helmet from '@fastify/helmet'
 import fastifyStatic from '@fastify/static'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { OllamaEmbedder, QdrantStore, indexQueue } from '@capytrace/core'
-import type { SearchResult } from '@capytrace/core'
+import { OllamaEmbedder, QdrantStore, indexQueue, dlqQueue } from '@capytrace/core'
+import type { SearchResult, DlqJobData } from '@capytrace/core'
 import type { Orchestrator } from './orchestrator.js'
 
 // ---------------------------------------------------------------------------
@@ -139,6 +139,60 @@ export async function buildServer(orchestrator: Orchestrator) {
   // ── POST /sync ────────────────────────────────────────────────────────────
   app.post('/sync', async (_request, reply) => {
     const result = await orchestrator.triggerSync()
+    return reply.send(result)
+  })
+
+  // ── GET /jobs/progress (SSE) ──────────────────────────────────────────────
+  // Streams live queue counts as Server-Sent Events every 2 seconds.
+  // The client closes the connection when it no longer needs updates.
+  app.get('/jobs/progress', async (request, reply) => {
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    })
+
+    const sendCounts = async () => {
+      const [waiting, active, completed, failed] = await Promise.all([
+        indexQueue.getWaitingCount(),
+        indexQueue.getActiveCount(),
+        indexQueue.getCompletedCount(),
+        indexQueue.getFailedCount(),
+      ])
+      reply.raw.write(`data: ${JSON.stringify({ waiting, active, completed, failed })}\n\n`)
+    }
+
+    await sendCounts()
+    const interval = setInterval(() => { void sendCounts() }, 2000)
+    request.raw.on('close', () => clearInterval(interval))
+  })
+
+  // ── GET /jobs/stats ───────────────────────────────────────────────────────
+  // Snapshot of current queue counts (non-SSE version for polling / dashboards).
+  app.get('/jobs/stats', async (_request, reply) => {
+    const [waiting, active, completed, failed, dlq] = await Promise.all([
+      indexQueue.getWaitingCount(),
+      indexQueue.getActiveCount(),
+      indexQueue.getCompletedCount(),
+      indexQueue.getFailedCount(),
+      dlqQueue.getWaitingCount(),
+    ])
+    return reply.send({ waiting, active, completed, failed, dlq })
+  })
+
+  // ── GET /jobs/failed ──────────────────────────────────────────────────────
+  // Returns the last 20 jobs in the Dead Letter Queue.
+  app.get('/jobs/failed', async (_request, reply) => {
+    const jobs = await dlqQueue.getJobs(['waiting', 'completed'], 0, 19)
+    const result = jobs.slice(0, 20).map((job) => {
+      const data = job.data as DlqJobData
+      return {
+        jobId: job.id,
+        stableId: data.document?.stableId,
+        lastError: data.lastError,
+        failedAt: data.failedAt,
+      }
+    })
     return reply.send(result)
   })
 

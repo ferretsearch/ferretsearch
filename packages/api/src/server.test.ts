@@ -5,11 +5,23 @@ import type { ConnectorStatus, Orchestrator } from './orchestrator.js'
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
-const { mockEmbedText, mockSearch, mockIsPaused } = vi.hoisted(() => ({
-  mockEmbedText: vi.fn(),
-  mockSearch: vi.fn(),
-  mockIsPaused: vi.fn(),
-}))
+const { mockEmbedText, mockSearch, mockIsPaused, mockQueueCounts, mockDlqCounts, mockDlqGetJobs } =
+  vi.hoisted(() => ({
+    mockEmbedText: vi.fn(),
+    mockSearch: vi.fn(),
+    mockIsPaused: vi.fn(),
+    mockQueueCounts: {
+      getWaitingCount: vi.fn().mockResolvedValue(2),
+      getActiveCount: vi.fn().mockResolvedValue(1),
+      getCompletedCount: vi.fn().mockResolvedValue(50),
+      getFailedCount: vi.fn().mockResolvedValue(3),
+    },
+    mockDlqCounts: {
+      getWaitingCount: vi.fn().mockResolvedValue(1),
+      getJobs: vi.fn().mockResolvedValue([]),
+    },
+    mockDlqGetJobs: vi.fn().mockResolvedValue([]),
+  }))
 
 vi.mock('@capytrace/core', () => ({
   OllamaEmbedder: class {
@@ -18,7 +30,17 @@ vi.mock('@capytrace/core', () => ({
   QdrantStore: class {
     search = mockSearch
   },
-  indexQueue: { isPaused: mockIsPaused },
+  indexQueue: {
+    isPaused: mockIsPaused,
+    getWaitingCount: mockQueueCounts.getWaitingCount,
+    getActiveCount: mockQueueCounts.getActiveCount,
+    getCompletedCount: mockQueueCounts.getCompletedCount,
+    getFailedCount: mockQueueCounts.getFailedCount,
+  },
+  dlqQueue: {
+    getWaitingCount: mockDlqCounts.getWaitingCount,
+    getJobs: mockDlqGetJobs,
+  },
 }))
 
 // ---------------------------------------------------------------------------
@@ -213,5 +235,64 @@ describe('POST /sync', () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ queued: 17, connectors: ['slack-main'] })
     expect(orchestrator.triggerSync).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /jobs/stats
+// ---------------------------------------------------------------------------
+describe('GET /jobs/stats', () => {
+  it('returns an object with waiting, active, completed, failed, dlq fields', async () => {
+    mockQueueCounts.getWaitingCount.mockResolvedValue(2)
+    mockQueueCounts.getActiveCount.mockResolvedValue(1)
+    mockQueueCounts.getCompletedCount.mockResolvedValue(50)
+    mockQueueCounts.getFailedCount.mockResolvedValue(3)
+    mockDlqCounts.getWaitingCount.mockResolvedValue(1)
+
+    const app = await buildServer(makeOrchestrator())
+    const response = await app.inject({ method: 'GET', url: '/jobs/stats' })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ waiting: 2, active: 1, completed: 50, failed: 3, dlq: 1 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /jobs/failed
+// ---------------------------------------------------------------------------
+describe('GET /jobs/failed', () => {
+  it('returns an array of DLQ jobs', async () => {
+    mockDlqGetJobs.mockResolvedValue([
+      {
+        id: 'dlq-1',
+        data: {
+          document: { stableId: 'slack:ws:msg-1' },
+          lastError: 'Ollama unavailable',
+          failedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
+    ])
+
+    const app = await buildServer(makeOrchestrator())
+    const response = await app.inject({ method: 'GET', url: '/jobs/failed' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<Array<{ jobId: string; stableId: string; lastError: string }>>()
+    expect(body).toHaveLength(1)
+    expect(body[0]).toMatchObject({
+      jobId: 'dlq-1',
+      stableId: 'slack:ws:msg-1',
+      lastError: 'Ollama unavailable',
+    })
+  })
+
+  it('returns an empty array when the DLQ is empty', async () => {
+    mockDlqGetJobs.mockResolvedValue([])
+
+    const app = await buildServer(makeOrchestrator())
+    const response = await app.inject({ method: 'GET', url: '/jobs/failed' })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual([])
   })
 })

@@ -36,7 +36,10 @@ vi.mock('bullmq', () => ({
     _name: string,
     processor: (job: Job<IndexJobData, IndexJobResult>) => Promise<IndexJobResult>,
   ) {
-    state.capturedProcessor = processor
+    // Only capture the processor for the main indexing queue
+    if (_name === 'indexing') {
+      state.capturedProcessor = processor
+    }
     return { on: vi.fn() }
   }),
   Queue: vi.fn(function () {
